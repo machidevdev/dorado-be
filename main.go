@@ -89,12 +89,18 @@ func (e *ValidationError) Error() string {
 func main() {
 	db_url := os.Getenv("DATABASE_URL")
 	if db_url == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		log.Println("ERROR: DATABASE_URL environment variable is not set")
+		os.Exit(1)
 	}
+
 	db, err := gorm.Open(postgres.Open(db_url), &gorm.Config{})
 	if err != nil {
-		panic(err)
+		log.Printf("ERROR: Failed to connect to database: %v\n", err)
+		os.Exit(1)
 	}
+
+	// Auto-migrate database schema
+	db.AutoMigrate(&User{})
 
 	r := gin.Default()
 	r.GET("/ping", func(c *gin.Context) {
@@ -136,13 +142,6 @@ func main() {
 		})
 	})
 
-	// Drop and recreate table (for testing only - remove before production!)
-	db.AutoMigrate(&User{})
-
-	result := db.Create(&User{Email: "bibibi"})
-	if result.Error != nil {
-		log.Printf("error: %v\n", result.Error)
-	}
-	log.Println("Saved userr bibibi")
+	log.Println("Database connected successfully, starting server...")
 	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 }
