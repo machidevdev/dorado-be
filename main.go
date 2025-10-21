@@ -133,6 +133,26 @@ func main() {
 		})
 	})
 	r.GET("/users", func(c *gin.Context) {
+		// Password protection for admin access
+		const adminPassword = "Dorado2025!?"
+		authHeader := c.GetHeader("Authorization")
+
+		if authHeader == "" {
+			c.JSON(401, gin.H{
+				"error": "unauthorized: missing authorization header",
+			})
+			return
+		}
+
+		// Extract password from "Bearer <password>" format
+		password := strings.TrimPrefix(authHeader, "Bearer ")
+		if password == authHeader || password != adminPassword {
+			c.JSON(401, gin.H{
+				"error": "unauthorized: invalid password",
+			})
+			return
+		}
+
 		var users []User
 		if err := db.Find(&users).Error; err != nil {
 			c.JSON(500, gin.H{
