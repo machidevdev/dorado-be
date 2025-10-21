@@ -7,7 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	limiter "github.com/ulule/limiter/v3"
+	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -103,13 +107,44 @@ func main() {
 	db.AutoMigrate(&User{})
 
 	r := gin.Default()
+
+	// CORS configuration - only allow requests from Vercel domain
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"https://dorado-waitlist.vercel.app"},
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	// Rate limiting configuration
+	// 10 requests per minute per IP for global rate limiting
+	rate := limiter.Rate{
+		Period: 1 * time.Minute,
+		Limit:  10,
+	}
+	store := memory.NewStore()
+	rateLimitMiddleware := mgin.NewMiddleware(limiter.New(store, rate))
+
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",
 		})
 	})
+	r.GET("/users", func(c *gin.Context) {
+		var users []User
+		if err := db.Find(&users).Error; err != nil {
+			c.JSON(500, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		c.JSON(200, users)
+	})
 
-	r.POST("/users", func(c *gin.Context) {
+	// Apply rate limiting to POST /users endpoint
+	r.POST("/users", rateLimitMiddleware, func(c *gin.Context) {
 		// read user from request body
 		var user UserPost
 		if err := c.ShouldBindJSON(&user); err != nil {
